@@ -1,64 +1,74 @@
 #include <Arduino.h>
-#include "L298N.h"
-#include "AS5600.h"
-#include <DabbleESP32.h>
 #include <ArduinoLog.h>
-#include "TCA9548.h"
-#include "Hexapod.h"
-#include "MyTest.h"
-#define CUSTOM_SETTINGS
-#define INCLUDE_GAMEPAD_MODULE
+#include <WiFi.h>
+#include <ESP_Google_Sheet_Client.h>
 
-int multiplexerAddress = 0x70;
+#define thermistorPin 1
+#define routerPowerOnPin 2
 
-TCA9548 multiplexer(multiplexerAddress);
+#define WIFI_SSID "Galaxy S20 FEDF80"
+#define WIFI_PASSWORD "kdbi8870"
 
-Hexapod hexapod(multiplexer);
+#define GOOGLE_PROJECT_ID "logical-utility-388206"
 
-MyTest test; // Create a Test object
+// Service Account's client email
+#define GOOGLE_CLIENT_EMAIL "esp32test20230529@logical-utility-388206.iam.gserviceaccount.com"
 
-int currentTurns = 0;
+// Your email to share access to spreadsheet
+#define GOOGLE_USER_EMAIL "majid.merati.2022@gmail.com"
 
-void scanMultiplexerAddresses()
-{
-    Wire.begin();
-    if (multiplexer.begin() == false)
-    {
-        Log.info("COULD NOT CONNECT TO MULTIPLEXER \n");
-    }
+const char GOOGLE_API_PRIVATE_KEY[] PROGMEM = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCbBLtWIEx2OmTI\nzyNk53HtxjebDfGp0AcbAcC/ztN6CTPYKKO7k1jGcKkSUMe7oWGr4lB/QeS0XBFG\nkzjS3LpIuTMlBtf4erf7fcFqCF5VlYYWwuprOmZe3hyYvlc8oBUIcgQvOA6xQcxW\n0tJTAQXfT9g1IF3lRupZ6mCN1ILinxMQOA7zNLa7CLe2wq1hFX4kn8+YztHAiunp\nR7EMhzZAL9rwR2VpWoFZj24TZpQzEYS1S7n3iD8d0Ip3mVmoNcYDe39I5+ZE8xe1\nuqbc4Z5SzUe6RyytAMLL4tMAqDqvDTXtnD9Hw1f3DTymEWEFYjfjO3B6Pt90VLMG\n48r7veZvAgMBAAECggEAO5XzCGT73woNCV8NhNCt6y6g2xneBV7wDEJ9O30drq/w\n3KqqXQSDQCu34VFppMagi3g/ZtsGNQmanl0in3K2rBN8BESAKYPKSoIJIV+8GvuR\nghhEERlulhKcPV4UnDoQO6HP1/KdOydGiy0YKU2gWzkOq0UYsnOyywMbQAkqkj7n\n5ELfR//Leewx92zTiGrI4xns0sDm15rEYQvF8WQZeMFUblmJ+5FfuSK5hP0SaX4F\nvv9cx34TteUm1sro+v65HYTjY8Ozcur+ZjiuSNuAx4vs7CmpUM3kAjIN2451H9ka\ny3PY7I3bvFhy9tIHmQflFiokAFk3eH//HavpmBnroQKBgQDKJYElbW1b9L+5RHK4\nD8vRRbIgNVw1lcsBulwc4/VyAUORd3V9JQwfGvGBKykTVvJ75USR9T49BIDBZeR+\nfeO2RZtCaEXm5OtQgVM8p9GFUxhRk283CPf/uZbMkNkXXCLefcVWCBr+6+2extUV\nz+MMgghwFx4vjbJqe2RqFtA+vwKBgQDEURJ6zhKu7pJy1wNlPkfsnDwb2sbj/UmG\nmzA+9KEP9PQExxShRYBwyrsgGRB644kLtWv6tOTezib54SnWXAcVHXkkP1hWrw79\nfWY9tgPldwvlT9KMXTiG6NBHDZD/lwVtiMqulmKpXVr+AVSOp+t/vzquvOO8MKl2\nP5g5BvT0UQKBgQCX1S24uAWBIUd0V7Y3DB5R9KCDUrEMypMtnBWd2Zc85zgiJfEI\na3A8WNd25r02eoMtjho/602xNRWkrey/Gb2U5Zller6uW9lnoYusrnxQQQauFyhc\n1Q65dGORCWcWBa1nIl67bOEiAoF7VestM/VdKro9vw98NlkBY+cbTEFkLwKBgHno\nglpCR7XbrpOj05b2UwGqj2UYuXNwoUz2Z8JgdPgMu8+PtM7k8vqX2hX3mpVFYKAl\nu/UGii2VxPxdB3b21OsWz1hkAb5qnRtq2KevtMG06G0w4WWKqgSU5GmLEiS1qog3\nbu11s7TKpSugtdqUihhdLtq9r4n4ifNFUIjxOgHRAoGAbMlZi6KtyuIqfpnOvYej\nIO2SmKA85EBelrZCl2xKlIgGpLRITzfiQ5k+HH3ts22iw3ld+tBxpg82EX4Zuavj\niM57EIf6hzLsh8eLpic85ziD6PV14PBQUECS1Bb14fMJ4k3rcGcNFo2o9tgjlu9R\nKDx2yXeNgh/pToM7GLvlIOg=\n-----END PRIVATE KEY-----\n";
 
-    for (uint8_t channel = 0; channel < 8; channel++)
-    {
-        multiplexer.enableChannel(channel);
-        Log.info("TCA channel #%d\n", channel);
+bool logTemperatureTaskComplete = false;
 
-        for (uint8_t addr = 0; addr <= 127; addr++)
-        {
-            if (addr == multiplexerAddress)
-                continue;
+String spreadsheetId;
 
-            Wire.beginTransmission(addr);
-            if (!Wire.endTransmission())
-            {
-                Log.info("Found I2C 0x%x\n", addr);
-            }
-        }
+tm spreadsheetCreated;
 
-        multiplexer.disableChannel(channel);
-    }
-    Log.info("Done scan multiplexer addresses\n");
-}
+int lastRow = 1;
+
+// void scanMultiplexerAddresses()
+// {
+//     Wire.begin();
+//     if (multiplexer.begin() == false)
+//     {
+//         Log.info("COULD NOT CONNECT TO MULTIPLEXER \n");
+
+//     for (uint8_t channel = 0; channel < 8; channel++)
+//     {
+//         multiplexer.enableChannel(channel);
+//         Log.info("TCA channel #%d\n", channel);
+
+//         for (uint8_t addr = 0; addr <= 127; addr++)
+//         {
+//             if (addr == multiplexerAddress)
+//                 continue;
+
+//             Wire.beginTransmission(addr);
+//             if (!Wire.endTransmission())
+//             {
+//                 Log.info("Found I2C 0x%x\n", addr);
+//             }
+//         }
+
+//         multiplexer.disableChannel(channel);
+//     }
+//     Log.info("Done scan multiplexer addresses\n");
+// }
 
 void setup()
 {
     Serial.begin(115200); // make sure your Serial Monitor is also set at this baud rate.
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
-    //Dabble.begin("HexapodEsp32"); // set bluetooth name of your device
-    scanMultiplexerAddresses();
 
-    hexapod.legs[0].setup(); // setup the first leg
-    // hexapod.setup();                     // setup the hexapod
-    // hexapod.moveLegsToInitialPosition(); // move the legs to the initial position
+    connectToWiFi();
+
+    setupGoogleSheet();
+
+    char *ntpServer = "pool.ntp.org";
+    long gmtOffset_sec = 19800;
+    int daylightOffset_sec = 0;
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 }
 
 // void makeMotorShaftOneTurnTask()
@@ -107,126 +117,210 @@ void setup()
 //     as5600.calculateRPMTask(); // calculate the RPM
 // }
 
-void loop()
+double readTemperature()
 {
-    // Serial.print("y_axis: ");
-    // delay(1000);
+    int adcValue = analogRead(thermistorPin);                       // read ADC pin
+    double voltage = (float)adcValue / 4095.0 * 3.3;                // calculate voltage
+    double Rt = 10 * voltage / (3.3 - voltage);                     // calculate resistance value of thermistor
+    double tempK = 1 / (1 / (273.15 + 25) + log(Rt / 10) / 3950.0); // calculate temperature (Kelvin)
+    double tempC = tempK - 273.15;                                  // calculate temperature (Celsius)
+    Serial.printf("Pin value : %d,\tVoltage : %.2fV, \tTemperature : %.2fC\n", adcValue, voltage, tempC);
 
-    auto &leg = hexapod.legs[0];   // Get the first leg for testing
-    leg.makeOneStepTask(FORWARD); // make one step with the first leg
+    return tempC;
+}
 
-    if (leg.stepCompleted)
+void connectToWiFi()
+{
+    // WiFi.setAutoReconnect(true);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.print("Connecting to Wi-Fi");
+    unsigned long ms = millis();
+    while (WiFi.status() != WL_CONNECTED)
     {
-        delay(2000);
-        leg.stepCompleted = false; // Reset stepCompleted for the next step
-        Log.info("Step completed for leg %s\n", leg.encoder.name);
+        Serial.print(".");
+        delay(300);
+    }
+    Serial.println();
+    Serial.print("Connected with IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.println();
+}
+
+void tokenStatusCallback(TokenInfo info)
+{
+    if (info.status == esp_signer_token_status_error)
+    {
+        Serial.printf("Token info: type = %s, status = %s\n", GSheet.getTokenType(info).c_str(), GSheet.getTokenStatus(info).c_str());
+        Serial.printf("Token error: %s\n", GSheet.getTokenError(info).c_str());
+    }
+    else
+    {
+        Serial.printf("Token info: type = %s, status = %s\n", GSheet.getTokenType(info).c_str(), GSheet.getTokenStatus(info).c_str());
+    }
+}
+
+void setupGoogleSheet()
+{
+    // Set the callback for Google API access token generation status (for debug only)
+    GSheet.setTokenCallback(tokenStatusCallback);
+
+    // Set the seconds to refresh the auth token before expire (60 to 3540, default is 300 seconds)
+    GSheet.setPrerefreshSeconds(10 * 60);
+
+    // Begin the access token generation for Google API authentication
+    GSheet.begin(GOOGLE_CLIENT_EMAIL, GOOGLE_PROJECT_ID, GOOGLE_API_PRIVATE_KEY);
+}
+
+void logTemperature(double temperature)
+{
+    if (!spreadsheetId.isEmpty())
+    {
+        tm now = getTimeNow();
+
+        char timeString[50];
+        strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &now);
+
+        char range[50]; // Ensure the buffer is large enough
+        sprintf(range, "Sheet1!A%d:B%d", lastRow + 1, lastRow + 1);
+
+        FirebaseJson valueRange;
+        valueRange.add("range", range);
+        valueRange.add("majorDimension", "ROWS");
+        valueRange.set("values/[0]/[0]", timeString);
+        valueRange.set("values/[0]/[1]", temperature); // row 1/ column 2
+
+        FirebaseJson response;
+        bool success = GSheet.values.update(&response, spreadsheetId, range, &valueRange);
+        response.toString(Serial, true);
+        Serial.println();
+
+        // for (int counter = 0; counter < 10; counter++)
+        // {
+        //     Serial.println("\nUpdate spreadsheet values...");
+        //     Serial.println("------------------------------");
+        //     // if (!getLocalTime(&timeinfo))
+        //     // {
+        //     //     Serial.println("Failed to obtain time");
+        //     //     return;
+        //     // }
+        //     // strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
+        //     // asString = timeStringBuff;
+        //     // asString.replace(" ", "-");
+        //     // SensValue = analogRead(34);
+        //     // itoa(SensValue, numberArray, 10);
+
+        //     sprintf(buffer, "values/[%d]/[1]", counter);
+        //     valueRange.set(buffer, numberArray);
+
+        //     sprintf(buffer, "values/[%d]/[0]", counter);
+        //     valueRange.set(buffer, asString);
+
+        //     // sprintf(buffer, "Sheet1!A%d:B%d", 1 + counter, 10 + counter);
+
+        //     success = GSheet.values.update(&response /* returned response */, spreadsheetId /* spreadsheet Id to update */, "Sheet1!A1:B1000" /* range to update */, &valueRange /* data to update */);
+        //     response.toString(Serial, true);
+        //     Serial.println();
+        //     // valueRange.clear();
+        //     delay(5000);
+        // }
+
+        // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/update
+
+        if (success)
+        {
+            lastRow++;
+
+            // Serial.println("\nGet spreadsheet values...");
+            // Serial.println("------------------------------");
+
+            // success = GSheet.values.get(&response /* returned response */, spreadsheetId /* spreadsheet Id to read */, "Sheet1!A1:B10" /* range to read */);
+            // response.toString(Serial, true);
+            // Serial.println();
+
+            Serial.println(ESP.getFreeHeap());
+        }
     }
 
-    // // motor.forward();
-    // // delay(2000);
-    // // motor.stop();
-    // // delay(1000);
-    // // motor.backward();
-    // // delay(2000);
-    // // motor.stop();
-    // // delay(1000);
+    logTemperatureTaskComplete = true;
+}
 
-    // auto direction = FORWARD;
-    // bool moveEnabled = false;
-    // String command = "";
-    // String prevCommand = "";
+tm getTimeNow()
+{
+    struct tm timeinfo;
 
-    // Dabble.processInput(); // this function is used to refresh data obtained from smartphone.Hence calling this function is mandatory in order to get data properly from your mobile.
-    // if (GamePad.isUpPressed())
-    // {
-    //     // Log.info("Up\n");
-    //     // motor.stop();
-    //     // delay(500);
-    //     // motor.forward();
-    //     direction = FORWARD;
-    //     command = "Up";
-    // }
+    if (!getLocalTime(&timeinfo))
+    {
+        Serial.println("Failed to obtain time");
+    }
 
-    // if (GamePad.isDownPressed())
-    // {
-    //     // Log.info("Down\n");
-    //     // motor.stop();
-    //     // delay(500);
-    //     // motor.backward();
-    //     direction = BACKWARD;
-    //     command = "Down";
-    // }
+    return timeinfo;
+}
 
-    // // // if (GamePad.isLeftPressed())
-    // // // {
-    // // //     Serial.print("Left");
-    // // // }
+void createGoogleSheet()
+{
+    tm now = getTimeNow();
 
-    // // // if (GamePad.isRightPressed())
-    // // // {
-    // // //     Serial.print("Right");
-    // // // }
+    if (!spreadsheetId.isEmpty() && now.tm_mday == spreadsheetCreated.tm_mday)
+    {
+        return;
+    }
 
-    // // if (GamePad.isSquarePressed())
-    // // {
-    // //     int speed = mapSpeed(100);
-    // //     Log.info("Square: %d\n", speed);
-    // //     motor.setSpeed(speed);
-    // // }
+    FirebaseJson response;
 
-    // // if (GamePad.isTrianglePressed())
-    // // {
-    // //     int speed = mapSpeed(75);
-    // //     Log.info("Triangle: %d\n", speed);
-    // //     motor.setSpeed(speed);
-    // // }
+    Serial.println("\nCreate spreadsheet...");
+    Serial.println("------------------------");
 
-    // // if (GamePad.isCirclePressed())
-    // // {
-    // //     int speed = mapSpeed(50);
-    // //     Log.info("Circle: %d\n", speed);
-    // //     motor.setSpeed(speed);
-    // // }
+    // strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
 
-    // // if (GamePad.isCrossPressed())
-    // // {
-    // //     int speed = mapSpeed(20);
-    // //     Log.info("Cross: %d\n", speed);
-    // //     motor.setSpeed(speed);
-    // // }
+    FirebaseJson spreadsheet;
+    spreadsheet.set("properties/title", "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday);
+    spreadsheet.set("sheets/properties/gridProperties/rowCount", 2000);
+    spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
 
-    // // if (GamePad.isStartPressed())
-    // // {
-    // //     Log.info("Start\n");
-    // //     motor.stop();
-    // // }
+    // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/create
+    bool success = GSheet.create(&response, &spreadsheet, GOOGLE_USER_EMAIL);
+    response.toString(Serial, true);
+    Serial.println();
 
-    // hexapod.moveWithTripodGateTask(direction,
-    //                                (command == "Up" || command == "Down") && command == prevCommand);
+    if (success)
+    {
+        // Get the spreadsheet id from already created file.
+        FirebaseJsonData result;
+        response.get(result, FPSTR("spreadsheetId")); // parse or deserialize the JSON response
+        if (result.success)
+        {
+            spreadsheetId = result.to<const char *>();
+        }
 
-    // prevCommand = command;
+        // Get the spreadsheet URL.
+        result.clear();
+        response.get(result, FPSTR("spreadsheetUrl")); // parse or deserialize the JSON response
+        if (result.success)
+        {
+            String spreadsheetURL = result.to<const char *>();
+            Serial.println("\nThe spreadsheet URL");
+            Serial.println(spreadsheetURL);
+        }
 
-    // // makeMotorShaftOneTurnTask();
+        spreadsheetCreated = now;
+    }
+}
 
-    // // if (GamePad.isSelectPressed())
-    // // {
-    // //     Serial.print("Select");
-    // // }
-    // // Serial.print('\t');
+void loop()
+{
+    digitalWrite(routerPowerOnPin, HIGH);
+    delay(1000 * 60);
 
-    // // int a = GamePad.getAngle();
-    // // Serial.print("Angle: ");
-    // // Serial.print(a);
-    // // Serial.print('\t');
-    // // int b = GamePad.getRadius();
-    // // Serial.print("Radius: ");
-    // // Serial.print(b);
-    // // Serial.print('\t');
-    // // float c = GamePad.getXaxisData();
-    // // Serial.print("x_axis: ");
-    // // Serial.print(c);
-    // // Serial.print('\t');
-    // // float d = GamePad.getYaxisData();
-    // // Serial.print("y_axis: ");
-    // // Serial.println(d);
+    // Call ready() repeatedly in loop for authentication checking and processing
+    bool ready = GSheet.ready();
+    if (ready)
+    {
+        createGoogleSheet();
+
+        double temperature = readTemperature();
+        logTemperature(temperature);
+    }
+
+    digitalWrite(routerPowerOnPin, LOW);
+    delay(1000 * 60 * 2);
 }
