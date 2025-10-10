@@ -2,22 +2,26 @@
 #include <ArduinoLog.h>
 #include <WiFi.h>
 #include <ESP_Google_Sheet_Client.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 
 #define thermistorPin 1
 #define routerPowerOnPin 2
 
-#define WIFI_SSID "Galaxy S20 FEDF80"
-#define WIFI_PASSWORD "kdbi8870"
+#define configFilePath "/config.json"
 
-#define GOOGLE_PROJECT_ID "logical-utility-388206"
+String WIFI_SSID = "";
+String WIFI_PASSWORD = "";
+
+String GOOGLE_PROJECT_ID = "";
 
 // Service Account's client email
-#define GOOGLE_CLIENT_EMAIL "esp32test20230529@logical-utility-388206.iam.gserviceaccount.com"
+String GOOGLE_CLIENT_EMAIL = "";
 
 // Your email to share access to spreadsheet
-#define GOOGLE_USER_EMAIL "majid.merati.2022@gmail.com"
+String GOOGLE_USER_EMAIL = "";
 
-const char GOOGLE_API_PRIVATE_KEY[] PROGMEM = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCbBLtWIEx2OmTI\nzyNk53HtxjebDfGp0AcbAcC/ztN6CTPYKKO7k1jGcKkSUMe7oWGr4lB/QeS0XBFG\nkzjS3LpIuTMlBtf4erf7fcFqCF5VlYYWwuprOmZe3hyYvlc8oBUIcgQvOA6xQcxW\n0tJTAQXfT9g1IF3lRupZ6mCN1ILinxMQOA7zNLa7CLe2wq1hFX4kn8+YztHAiunp\nR7EMhzZAL9rwR2VpWoFZj24TZpQzEYS1S7n3iD8d0Ip3mVmoNcYDe39I5+ZE8xe1\nuqbc4Z5SzUe6RyytAMLL4tMAqDqvDTXtnD9Hw1f3DTymEWEFYjfjO3B6Pt90VLMG\n48r7veZvAgMBAAECggEAO5XzCGT73woNCV8NhNCt6y6g2xneBV7wDEJ9O30drq/w\n3KqqXQSDQCu34VFppMagi3g/ZtsGNQmanl0in3K2rBN8BESAKYPKSoIJIV+8GvuR\nghhEERlulhKcPV4UnDoQO6HP1/KdOydGiy0YKU2gWzkOq0UYsnOyywMbQAkqkj7n\n5ELfR//Leewx92zTiGrI4xns0sDm15rEYQvF8WQZeMFUblmJ+5FfuSK5hP0SaX4F\nvv9cx34TteUm1sro+v65HYTjY8Ozcur+ZjiuSNuAx4vs7CmpUM3kAjIN2451H9ka\ny3PY7I3bvFhy9tIHmQflFiokAFk3eH//HavpmBnroQKBgQDKJYElbW1b9L+5RHK4\nD8vRRbIgNVw1lcsBulwc4/VyAUORd3V9JQwfGvGBKykTVvJ75USR9T49BIDBZeR+\nfeO2RZtCaEXm5OtQgVM8p9GFUxhRk283CPf/uZbMkNkXXCLefcVWCBr+6+2extUV\nz+MMgghwFx4vjbJqe2RqFtA+vwKBgQDEURJ6zhKu7pJy1wNlPkfsnDwb2sbj/UmG\nmzA+9KEP9PQExxShRYBwyrsgGRB644kLtWv6tOTezib54SnWXAcVHXkkP1hWrw79\nfWY9tgPldwvlT9KMXTiG6NBHDZD/lwVtiMqulmKpXVr+AVSOp+t/vzquvOO8MKl2\nP5g5BvT0UQKBgQCX1S24uAWBIUd0V7Y3DB5R9KCDUrEMypMtnBWd2Zc85zgiJfEI\na3A8WNd25r02eoMtjho/602xNRWkrey/Gb2U5Zller6uW9lnoYusrnxQQQauFyhc\n1Q65dGORCWcWBa1nIl67bOEiAoF7VestM/VdKro9vw98NlkBY+cbTEFkLwKBgHno\nglpCR7XbrpOj05b2UwGqj2UYuXNwoUz2Z8JgdPgMu8+PtM7k8vqX2hX3mpVFYKAl\nu/UGii2VxPxdB3b21OsWz1hkAb5qnRtq2KevtMG06G0w4WWKqgSU5GmLEiS1qog3\nbu11s7TKpSugtdqUihhdLtq9r4n4ifNFUIjxOgHRAoGAbMlZi6KtyuIqfpnOvYej\nIO2SmKA85EBelrZCl2xKlIgGpLRITzfiQ5k+HH3ts22iw3ld+tBxpg82EX4Zuavj\niM57EIf6hzLsh8eLpic85ziD6PV14PBQUECS1Bb14fMJ4k3rcGcNFo2o9tgjlu9R\nKDx2yXeNgh/pToM7GLvlIOg=\n-----END PRIVATE KEY-----\n";
+String GOOGLE_API_PRIVATE_KEY = "";
 
 bool logTemperatureTaskComplete = false;
 
@@ -61,14 +65,45 @@ void setup()
     Serial.begin(115200); // make sure your Serial Monitor is also set at this baud rate.
     Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
-    connectToWiFi();
+    Log.infoln("Setup started");
+    if (setSecretsFromConfig())
+    {
+        connectToWiFi();
 
-    setupGoogleSheet();
+        setupGoogleSheet();
 
-    char *ntpServer = "pool.ntp.org";
-    long gmtOffset_sec = 19800;
-    int daylightOffset_sec = 0;
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        char *ntpServer = "pool.ntp.org";
+        long gmtOffset_sec = 19800;
+        int daylightOffset_sec = 0;
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    }
+    else
+    {
+        Log.error("Could not load secrets from config");
+        while (1)
+            ;
+    }
+
+    Log.infoln("Setup complete");
+}
+
+void loop()
+{
+    digitalWrite(routerPowerOnPin, HIGH);
+    delay(1000 * 60);
+
+    // Call ready() repeatedly in loop for authentication checking and processing
+    bool ready = GSheet.ready();
+    if (ready)
+    {
+        createGoogleSheet();
+
+        double temperature = readTemperature();
+        logTemperature(temperature);
+    }
+
+    digitalWrite(routerPowerOnPin, LOW);
+    delay(1000 * 60 * 2);
 }
 
 // void makeMotorShaftOneTurnTask()
@@ -169,10 +204,14 @@ void setupGoogleSheet()
 
     // Begin the access token generation for Google API authentication
     GSheet.begin(GOOGLE_CLIENT_EMAIL, GOOGLE_PROJECT_ID, GOOGLE_API_PRIVATE_KEY);
+
+    Log.infoln("Google Sheet client setup ready");
 }
 
 void logTemperature(double temperature)
 {
+    Log.infoln("Log temperature task started");
+
     if (!spreadsheetId.isEmpty())
     {
         tm now = getTimeNow();
@@ -242,6 +281,8 @@ void logTemperature(double temperature)
     }
 
     logTemperatureTaskComplete = true;
+
+    Log.infoln("Log temperature task completed");
 }
 
 tm getTimeNow()
@@ -306,21 +347,83 @@ void createGoogleSheet()
     }
 }
 
-void loop()
+bool setSecretsFromConfig()
 {
-    digitalWrite(routerPowerOnPin, HIGH);
-    delay(1000 * 60);
-
-    // Call ready() repeatedly in loop for authentication checking and processing
-    bool ready = GSheet.ready();
-    if (ready)
+    if (!LittleFS.begin(false))
     {
-        createGoogleSheet();
-
-        double temperature = readTemperature();
-        logTemperature(temperature);
+        Serial.println("LITTLEFS Mount failed");
+        Serial.println("Did not find filesystem; starting format");
+        // format if begin fails
+        if (!LittleFS.begin(true))
+        {
+            Serial.println("LITTLEFS mount failed");
+            Serial.println("Formatting not possible");
+            return false;
+        }
+        else
+        {
+            Serial.println("Formatting");
+        }
     }
 
-    digitalWrite(routerPowerOnPin, LOW);
-    delay(1000 * 60 * 2);
+    Serial.println("setup -> SPIFFS mounted successfully");
+    if (readConfig() == false)
+    {
+        Serial.println("setup -> Could not read Config file");
+        return false;
+    }
+
+    Log.infoln("Secrets -> UserEmail: %s, ClientEmail: %s", GOOGLE_USER_EMAIL.c_str(), GOOGLE_CLIENT_EMAIL.c_str());
+
+    return true;
+}
+
+bool readConfig()
+{
+    String fileText = readFile(configFilePath);
+
+    int fileSize = fileText.length();
+    Serial.println("Config file size: " + fileSize);
+
+    JsonDocument doc;
+    auto error = deserializeJson(doc, fileText);
+    if (error)
+    {
+        Serial.println("Error interpreting config file");
+        return false;
+    }
+
+    const String projectId = doc["project_id"];
+    const String privateKey = doc["private_key"];
+    const String clientEmail = doc["client_email"];
+    const String wifiSsid = doc["wifi_ssid"];
+    const String wifiPassword = doc["wifi_password"];
+    const String userEmail = doc["shared_user_email"];
+
+    GOOGLE_PROJECT_ID = projectId;
+    GOOGLE_API_PRIVATE_KEY = privateKey;
+    GOOGLE_CLIENT_EMAIL = clientEmail;
+    GOOGLE_USER_EMAIL = userEmail;
+    WIFI_SSID = wifiSsid;
+    WIFI_PASSWORD = wifiPassword;
+
+    return true;
+}
+
+String readFile(String filename)
+{
+    File file = LittleFS.open(filename);
+    if (!file)
+    {
+        Serial.println("Failed to open file for reading");
+        return "";
+    }
+
+    String fileText = "";
+    while (file.available())
+    {
+        fileText = file.readString();
+    }
+    file.close();
+    return fileText;
 }
