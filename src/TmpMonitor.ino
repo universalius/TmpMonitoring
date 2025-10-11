@@ -19,7 +19,7 @@ String GOOGLE_PROJECT_ID = "";
 String GOOGLE_CLIENT_EMAIL = "";
 
 // Your email to share access to spreadsheet
-String GOOGLE_USER_EMAIL = "";
+const char *GOOGLE_USER_EMAIL = "";
 
 String GOOGLE_API_PRIVATE_KEY = "";
 
@@ -89,21 +89,22 @@ void setup()
 
 void loop()
 {
-    digitalWrite(routerPowerOnPin, HIGH);
-    delay(1000 * 60);
 
     // Call ready() repeatedly in loop for authentication checking and processing
     bool ready = GSheet.ready();
     if (ready)
     {
+        digitalWrite(routerPowerOnPin, HIGH);
+        delay(1000 * 60);
+
         createGoogleSheet();
 
         double temperature = readTemperature();
         logTemperature(temperature);
-    }
 
-    digitalWrite(routerPowerOnPin, LOW);
-    delay(1000 * 60 * 2);
+        digitalWrite(routerPowerOnPin, LOW);
+        delay(1000 * 60 * 2);
+    }
 }
 
 // void makeMotorShaftOneTurnTask()
@@ -373,7 +374,7 @@ bool setSecretsFromConfig()
         return false;
     }
 
-    Log.infoln("Secrets -> UserEmail: %s, ClientEmail: %s", GOOGLE_USER_EMAIL.c_str(), GOOGLE_CLIENT_EMAIL.c_str());
+    Log.infoln("Secrets -> UserEmail: %s, ClientEmail: %s", GOOGLE_USER_EMAIL, GOOGLE_CLIENT_EMAIL.c_str());
 
     return true;
 }
@@ -398,14 +399,16 @@ bool readConfig()
     const String clientEmail = doc["client_email"];
     const String wifiSsid = doc["wifi_ssid"];
     const String wifiPassword = doc["wifi_password"];
-    const String userEmail = doc["shared_user_email"];
+    const char *userEmail = doc["shared_user_email"];
 
     GOOGLE_PROJECT_ID = projectId;
-    GOOGLE_API_PRIVATE_KEY = privateKey;
+    GOOGLE_API_PRIVATE_KEY = replaceString(privateKey, "\n", "\\n");
     GOOGLE_CLIENT_EMAIL = clientEmail;
     GOOGLE_USER_EMAIL = userEmail;
     WIFI_SSID = wifiSsid;
     WIFI_PASSWORD = wifiPassword;
+
+    Log.infoln("Config -> PrivateKey: %s", GOOGLE_API_PRIVATE_KEY.c_str());
 
     return true;
 }
@@ -426,4 +429,11 @@ String readFile(String filename)
     }
     file.close();
     return fileText;
+}
+
+String replaceString(String input, const String &from, const String &to)
+{
+    String result = input;    // Create a copy of the input string
+    result.replace(from, to); // Perform the replacement
+    return result;            // Return the modified string
 }
