@@ -3,7 +3,7 @@
 #include <WiFi.h>
 #include <ESP_Google_Sheet_Client.h>
 #include <LittleFS.h>
-#include <ArduinoJson.h>
+#include <iostream>
 
 #define thermistorPin 1
 #define routerPowerOnPin 2
@@ -25,11 +25,13 @@ String GOOGLE_API_PRIVATE_KEY = "";
 
 bool logTemperatureTaskComplete = false;
 
-String spreadsheetId;
+String spreadsheetId = "1RQlHQZr8uJ4i6gAF6mfdCsI_RbmNrU4sZ5N9aiCkI9g";
 
-tm spreadsheetCreated;
+String spreadsheetTab = "";
 
-int lastRow = 1;
+tm spreadsheetTabCreated;
+
+int lastRow = 0;
 
 // void scanMultiplexerAddresses()
 // {
@@ -95,16 +97,25 @@ void loop()
     if (ready)
     {
         digitalWrite(routerPowerOnPin, HIGH);
-        delay(1000 * 60);
+        delay(1000 * 10);
 
-        createGoogleSheet();
+        // createGoogleSheet();
+
+        createGoogleSheetTab();
+
+        if (lastRow == 0)
+        {
+            readLastRow();
+        }
 
         double temperature = readTemperature();
         logTemperature(temperature);
 
         digitalWrite(routerPowerOnPin, LOW);
-        delay(1000 * 60 * 2);
+        delay(1000 * 30);
     }
+
+    delay(500);
 }
 
 // void makeMotorShaftOneTurnTask()
@@ -203,8 +214,26 @@ void setupGoogleSheet()
     // Set the seconds to refresh the auth token before expire (60 to 3540, default is 300 seconds)
     GSheet.setPrerefreshSeconds(10 * 60);
 
+    // Log.infoln("setupGoogleSheet -> PrivateKey: %s", GOOGLE_API_PRIVATE_KEY.c_str());
+
+    // if (compareCharByChar(GOOGLE_API_PRIVATE_KEY, GOOGLE_API_PRIVATE_KEY1, true))
+    // {
+    //     Serial.println("Strings are equal");
+    // }
+    // else
+    // {
+    //     Serial.println("Strings are not equal");
+    // }
+
+    // for (int i = 0; GOOGLE_API_PRIVATE_KEY[i] != '\0'; i++)
+    // {
+    //     Serial.println((int)GOOGLE_API_PRIVATE_KEY[i]);
+    // }
+
+    // delay(1000 * 10);
+
     // Begin the access token generation for Google API authentication
-    GSheet.begin(GOOGLE_CLIENT_EMAIL, GOOGLE_PROJECT_ID, GOOGLE_API_PRIVATE_KEY);
+    GSheet.begin(GOOGLE_CLIENT_EMAIL, GOOGLE_PROJECT_ID, GOOGLE_API_PRIVATE_KEY.c_str());
 
     Log.infoln("Google Sheet client setup ready");
 }
@@ -221,7 +250,7 @@ void logTemperature(double temperature)
         strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &now);
 
         char range[50]; // Ensure the buffer is large enough
-        sprintf(range, "Sheet1!A%d:B%d", lastRow + 1, lastRow + 1);
+        sprintf(range, "%s!A%d:B%d", spreadsheetTab, lastRow + 1, lastRow + 1);
 
         FirebaseJson valueRange;
         valueRange.add("range", range);
@@ -233,38 +262,6 @@ void logTemperature(double temperature)
         bool success = GSheet.values.update(&response, spreadsheetId, range, &valueRange);
         response.toString(Serial, true);
         Serial.println();
-
-        // for (int counter = 0; counter < 10; counter++)
-        // {
-        //     Serial.println("\nUpdate spreadsheet values...");
-        //     Serial.println("------------------------------");
-        //     // if (!getLocalTime(&timeinfo))
-        //     // {
-        //     //     Serial.println("Failed to obtain time");
-        //     //     return;
-        //     // }
-        //     // strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
-        //     // asString = timeStringBuff;
-        //     // asString.replace(" ", "-");
-        //     // SensValue = analogRead(34);
-        //     // itoa(SensValue, numberArray, 10);
-
-        //     sprintf(buffer, "values/[%d]/[1]", counter);
-        //     valueRange.set(buffer, numberArray);
-
-        //     sprintf(buffer, "values/[%d]/[0]", counter);
-        //     valueRange.set(buffer, asString);
-
-        //     // sprintf(buffer, "Sheet1!A%d:B%d", 1 + counter, 10 + counter);
-
-        //     success = GSheet.values.update(&response /* returned response */, spreadsheetId /* spreadsheet Id to update */, "Sheet1!A1:B1000" /* range to update */, &valueRange /* data to update */);
-        //     response.toString(Serial, true);
-        //     Serial.println();
-        //     // valueRange.clear();
-        //     delay(5000);
-        // }
-
-        // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/update
 
         if (success)
         {
@@ -302,7 +299,7 @@ void createGoogleSheet()
 {
     tm now = getTimeNow();
 
-    if (!spreadsheetId.isEmpty() && now.tm_mday == spreadsheetCreated.tm_mday)
+    if (!spreadsheetId.isEmpty() && now.tm_mday == spreadsheetTabCreated.tm_mday)
     {
         return;
     }
@@ -312,15 +309,21 @@ void createGoogleSheet()
     Serial.println("\nCreate spreadsheet...");
     Serial.println("------------------------");
 
+    Log.infoln("Creating new spreadsheet for user: %s", GOOGLE_USER_EMAIL);
+
     // strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
 
-    FirebaseJson spreadsheet;
-    spreadsheet.set("properties/title", "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday);
-    spreadsheet.set("sheets/properties/gridProperties/rowCount", 2000);
-    spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
+    // FirebaseJson spreadsheet;
+    // spreadsheet.set("properties/title", "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday);
+    // spreadsheet.set("sheets/properties/gridProperties/rowCount", 2000);
+    // spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
+    // spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
 
-    // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/create
-    bool success = GSheet.create(&response, &spreadsheet, GOOGLE_USER_EMAIL);
+    // // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/create
+    // bool success = GSheet.create(&response, &spreadsheet, GOOGLE_USER_EMAIL);
+    String fileName = "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday;
+    bool success = GSheet.createEmpty(&response, fileName, "1W8HnOToJvbgOWrHg_5CZWhRhjTwWsAlD");
+
     response.toString(Serial, true);
     Serial.println();
 
@@ -344,7 +347,117 @@ void createGoogleSheet()
             Serial.println(spreadsheetURL);
         }
 
-        spreadsheetCreated = now;
+        spreadsheetTabCreated = now;
+    }
+}
+
+void createGoogleSheetTab()
+{
+    if (spreadsheetId.isEmpty())
+    {
+        Serial.println("Spreadsheet ID is empty. Cannot create tab.");
+        return;
+    }
+
+    tm now = getTimeNow();
+    if (!spreadsheetTab.isEmpty() && now.tm_mday == spreadsheetTabCreated.tm_mday)
+    {
+        return;
+    }
+
+    char timeString[50];
+    strftime(timeString, sizeof(timeString), "%Y-%m-%d", &now);
+
+    FirebaseJson response;
+
+    Serial.println("\nCreate tab in spreadsheet...");
+    Serial.println("------------------------------");
+
+    FirebaseJson requests;
+    FirebaseJsonArray requestsArray;
+
+    FirebaseJson addSheetRequest;
+    addSheetRequest.set("addSheet/properties/title", timeString);
+    addSheetRequest.set("addSheet/properties/gridProperties/rowCount", 1500);
+    addSheetRequest.set("addSheet/properties/gridProperties/columnCount", 2);
+    requestsArray.add(addSheetRequest);
+
+    // requests.set("requests", &requestsArray);
+
+    // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/batchUpdate
+    bool success = GSheet.batchUpdate(&response, spreadsheetId.c_str(), &requestsArray);
+
+    response.toString(Serial, true);
+    Serial.println();
+
+    char tabName[50]; // Ensure the buffer is large enough
+    sprintf(tabName, "'%s'", timeString);
+
+    if (success)
+    {
+        Serial.println("Tab created successfully.");
+        spreadsheetTab = tabName;
+        spreadsheetTabCreated = now;
+    }
+    else
+    {
+        Serial.println("Failed to create tab.");
+
+        FirebaseJsonData status;
+        response.get(status, "error/status");
+
+        Log.infoln("Create tab error status: %s", status.stringValue.c_str());
+
+        if (status.stringValue == "INVALID_ARGUMENT" && spreadsheetTabCreated.tm_year == 0)
+        {
+            spreadsheetTab = tabName;
+            spreadsheetTabCreated = now;
+        }
+    }
+}
+
+void readLastRow()
+{
+    if (spreadsheetId.isEmpty())
+    {
+        Serial.println("Spreadsheet ID is empty. Cannot append row.");
+        return;
+    }
+
+    char range[50]; // Ensure the buffer is large enough
+    sprintf(range, "%s!A:B", spreadsheetTab);
+
+    FirebaseJson response;
+
+    Serial.println("\nAppend row to spreadsheet...");
+    Serial.println("------------------------------");
+
+    FirebaseJson valueRange;
+    valueRange.add("range", range);
+    valueRange.add("majorDimension", "ROWS");
+    valueRange.set("values/[0]/[0]", "LastRowCheck");
+
+    // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/append
+    bool success = GSheet.values.append(&response, spreadsheetId, range, &valueRange);
+
+    response.toString(Serial, true);
+    Serial.println();
+
+    if (success)
+    {
+        FirebaseJsonData updatedRange;
+        response.get(updatedRange, "updates/updatedRange");
+
+        Log.infoln("Number of rows appended: %s", updatedRange.stringValue.c_str());
+
+        char updatedRangeSubString[50]; // Ensure the buffer is large enough
+        sprintf(updatedRangeSubString, "%s!A", spreadsheetTab);
+
+        lastRow = replaceString(updatedRange.stringValue, updatedRangeSubString, "").toInt() - 1;
+    }
+    else
+    {
+        Serial.println("Failed to append row.");
     }
 }
 
@@ -386,29 +499,25 @@ bool readConfig()
     int fileSize = fileText.length();
     Serial.println("Config file size: " + fileSize);
 
-    JsonDocument doc;
-    auto error = deserializeJson(doc, fileText);
-    if (error)
-    {
-        Serial.println("Error interpreting config file");
-        return false;
-    }
+    FirebaseJson json;
+    json.setJsonData(fileText);
 
-    const String projectId = doc["project_id"];
-    const String privateKey = doc["private_key"];
-    const String clientEmail = doc["client_email"];
-    const String wifiSsid = doc["wifi_ssid"];
-    const String wifiPassword = doc["wifi_password"];
-    const char *userEmail = doc["shared_user_email"];
+    GOOGLE_PROJECT_ID = getJsonValue(json, "project_id");
 
-    GOOGLE_PROJECT_ID = projectId;
-    GOOGLE_API_PRIVATE_KEY = replaceString(privateKey, "\n", "\\n");
-    GOOGLE_CLIENT_EMAIL = clientEmail;
+    String privateKeyString = getJsonValue(json, "private_key");
+    privateKeyString.replace("\\n", "\n");
+
+    GOOGLE_API_PRIVATE_KEY = privateKeyString;
+
+    GOOGLE_CLIENT_EMAIL = getJsonValue(json, "client_email");
+
+    const char *userEmail = getJsonValue(json, "shared_user_email").c_str();
     GOOGLE_USER_EMAIL = userEmail;
-    WIFI_SSID = wifiSsid;
-    WIFI_PASSWORD = wifiPassword;
 
-    Log.infoln("Config -> PrivateKey: %s", GOOGLE_API_PRIVATE_KEY.c_str());
+    WIFI_SSID = getJsonValue(json, "wifi_ssid");
+    WIFI_PASSWORD = getJsonValue(json, "wifi_password");
+
+    // Log.infoln("Config -> PrivateKey: %s", GOOGLE_API_PRIVATE_KEY);
 
     return true;
 }
@@ -436,4 +545,49 @@ String replaceString(String input, const String &from, const String &to)
     String result = input;    // Create a copy of the input string
     result.replace(from, to); // Perform the replacement
     return result;            // Return the modified string
+}
+
+String getJsonValue(FirebaseJson json, String key)
+{
+    FirebaseJsonData result;
+    json.get(result, key);
+
+    if (result.success)
+    {
+        return result.to<String>();
+    }
+    else
+    {
+        return "";
+    }
+}
+
+bool compareCharByChar(const char *str1, const char *str2, bool asIntPrint)
+{
+    while (*str1 != '\0' && *str2 != '\0')
+    {
+        if (*str1 != *str2)
+        {
+            if (asIntPrint)
+            {
+                Log.infoln("Chars differ: %d != %d", (int)*str1, (int)*str2);
+            }
+            else
+                Log.infoln("Chars differ: '%c' != '%c'", *str1, *str2);
+            return false; // Characters differ
+        }
+        else
+        {
+            if (asIntPrint)
+            {
+                Log.infoln("Chars match: %d == %d", (int)*str1, (int)*str2);
+            }
+            else
+                Log.infoln("Chars match: '%c' == '%c'", *str1, *str2);
+        }
+        str1++;
+        str2++;
+    }
+    // Check if both strings ended at the same time
+    return *str1 == '\0' && *str2 == '\0';
 }

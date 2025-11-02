@@ -25,3 +25,15 @@ $ pio run -e quantum --target upload
 # Clean build files
 $ pio run --target clean
 ```
+
+How to debug ESP32 S3
+1. Connect to usb port that supports JTAG debug
+2. Download tool from https://zadig.akeo.ie/downloads/#google_vignette
+3. Open it, click Options -> List All Devices -> Select USB JTAG/serial debug unit (Interface 2)
+4. Change driver to libusbK with arrows and click install button.
+5. Add to platformio.ini
+```
+debug_tool = esp-builtin
+debug_init_break = tbreak setup
+```
+Can be usefull https://community.platformio.org/t/cannot-run-builtin-debugger-on-esp32-s3-board/36384/4
