@@ -10,6 +10,9 @@
 
 #define configFilePath "/config.json"
 
+#define uS_TO_S_FACTOR 1000000ULL
+#define TIME_TO_SLEEP 30 // seconds
+
 String WIFI_SSID = "";
 String WIFI_PASSWORD = "";
 
@@ -27,11 +30,11 @@ bool logTemperatureTaskComplete = false;
 
 String spreadsheetId = "1RQlHQZr8uJ4i6gAF6mfdCsI_RbmNrU4sZ5N9aiCkI9g";
 
-String spreadsheetTab = "";
+RTC_DATA_ATTR char spreadsheetTab[50] = "";
 
-tm spreadsheetTabCreated;
+RTC_DATA_ATTR tm spreadsheetTabCreated;
 
-int lastRow = 0;
+RTC_DATA_ATTR int lastRow = 0;
 
 // void scanMultiplexerAddresses()
 // {
@@ -74,10 +77,7 @@ void setup()
 
         setupGoogleSheet();
 
-        char *ntpServer = "pool.ntp.org";
-        long gmtOffset_sec = 19800;
-        int daylightOffset_sec = 0;
-        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        setupTime();
     }
     else
     {
@@ -86,7 +86,32 @@ void setup()
             ;
     }
 
+    esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+
+    Log.infoln("spreadsheetTab : %s, lastRow: %d, day: %d", spreadsheetTab, lastRow, spreadsheetTabCreated.tm_mday);
+
     Log.infoln("Setup complete");
+}
+
+void setupTime()
+{
+    char *ntpServer = "pool.ntp.org";
+    long gmtOffset_sec = 2 * 3600;
+    int daylightOffset_sec = 0;
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+    struct tm timeinfo;
+    for (int i = 0; i < 10; i++)
+    {
+        if (getLocalTime(&timeinfo))
+        {
+            Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+            return;
+        }
+        Serial.println("Waiting for NTP sync...");
+        delay(1000);
+    }
+    Serial.println("Failed to sync time.");
 }
 
 void loop()
@@ -97,7 +122,7 @@ void loop()
     if (ready)
     {
         digitalWrite(routerPowerOnPin, HIGH);
-        delay(1000 * 10);
+        delay(1000 * 30);
 
         // createGoogleSheet();
 
@@ -112,7 +137,7 @@ void loop()
         logTemperature(temperature);
 
         digitalWrite(routerPowerOnPin, LOW);
-        delay(1000 * 30);
+        esp_deep_sleep_start();
     }
 
     delay(500);
@@ -216,22 +241,6 @@ void setupGoogleSheet()
 
     // Log.infoln("setupGoogleSheet -> PrivateKey: %s", GOOGLE_API_PRIVATE_KEY.c_str());
 
-    // if (compareCharByChar(GOOGLE_API_PRIVATE_KEY, GOOGLE_API_PRIVATE_KEY1, true))
-    // {
-    //     Serial.println("Strings are equal");
-    // }
-    // else
-    // {
-    //     Serial.println("Strings are not equal");
-    // }
-
-    // for (int i = 0; GOOGLE_API_PRIVATE_KEY[i] != '\0'; i++)
-    // {
-    //     Serial.println((int)GOOGLE_API_PRIVATE_KEY[i]);
-    // }
-
-    // delay(1000 * 10);
-
     // Begin the access token generation for Google API authentication
     GSheet.begin(GOOGLE_CLIENT_EMAIL, GOOGLE_PROJECT_ID, GOOGLE_API_PRIVATE_KEY.c_str());
 
@@ -295,61 +304,61 @@ tm getTimeNow()
     return timeinfo;
 }
 
-void createGoogleSheet()
-{
-    tm now = getTimeNow();
+// void createGoogleSheet()
+// {
+//     tm now = getTimeNow();
 
-    if (!spreadsheetId.isEmpty() && now.tm_mday == spreadsheetTabCreated.tm_mday)
-    {
-        return;
-    }
+//     if (!spreadsheetId.isEmpty() && now.tm_mday == spreadsheetTabCreated.tm_mday)
+//     {
+//         return;
+//     }
 
-    FirebaseJson response;
+//     FirebaseJson response;
 
-    Serial.println("\nCreate spreadsheet...");
-    Serial.println("------------------------");
+//     Serial.println("\nCreate spreadsheet...");
+//     Serial.println("------------------------");
 
-    Log.infoln("Creating new spreadsheet for user: %s", GOOGLE_USER_EMAIL);
+//     Log.infoln("Creating new spreadsheet for user: %s", GOOGLE_USER_EMAIL);
 
-    // strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
+//     // strftime(timeStringBuff, sizeof(timeStringBuff), "%A, %B %d %Y %H:%M:%S", &timeinfo);
 
-    // FirebaseJson spreadsheet;
-    // spreadsheet.set("properties/title", "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday);
-    // spreadsheet.set("sheets/properties/gridProperties/rowCount", 2000);
-    // spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
-    // spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
+//     // FirebaseJson spreadsheet;
+//     // spreadsheet.set("properties/title", "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday);
+//     // spreadsheet.set("sheets/properties/gridProperties/rowCount", 2000);
+//     // spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
+//     // spreadsheet.set("sheets/properties/gridProperties/columnCount", 2);
 
-    // // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/create
-    // bool success = GSheet.create(&response, &spreadsheet, GOOGLE_USER_EMAIL);
-    String fileName = "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday;
-    bool success = GSheet.createEmpty(&response, fileName, "1W8HnOToJvbgOWrHg_5CZWhRhjTwWsAlD");
+//     // // For Google Sheet API ref doc, go to https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/create
+//     // bool success = GSheet.create(&response, &spreadsheet, GOOGLE_USER_EMAIL);
+//     String fileName = "BasementTmp_" + now.tm_year + now.tm_mon + now.tm_mday;
+//     bool success = GSheet.createEmpty(&response, fileName, "1W8HnOToJvbgOWrHg_5CZWhRhjTwWsAlD");
 
-    response.toString(Serial, true);
-    Serial.println();
+//     response.toString(Serial, true);
+//     Serial.println();
 
-    if (success)
-    {
-        // Get the spreadsheet id from already created file.
-        FirebaseJsonData result;
-        response.get(result, FPSTR("spreadsheetId")); // parse or deserialize the JSON response
-        if (result.success)
-        {
-            spreadsheetId = result.to<const char *>();
-        }
+//     if (success)
+//     {
+//         // Get the spreadsheet id from already created file.
+//         FirebaseJsonData result;
+//         response.get(result, FPSTR("spreadsheetId")); // parse or deserialize the JSON response
+//         if (result.success)
+//         {
+//             spreadsheetId = result.to<const char *>();
+//         }
 
-        // Get the spreadsheet URL.
-        result.clear();
-        response.get(result, FPSTR("spreadsheetUrl")); // parse or deserialize the JSON response
-        if (result.success)
-        {
-            String spreadsheetURL = result.to<const char *>();
-            Serial.println("\nThe spreadsheet URL");
-            Serial.println(spreadsheetURL);
-        }
+//         // Get the spreadsheet URL.
+//         result.clear();
+//         response.get(result, FPSTR("spreadsheetUrl")); // parse or deserialize the JSON response
+//         if (result.success)
+//         {
+//             String spreadsheetURL = result.to<const char *>();
+//             Serial.println("\nThe spreadsheet URL");
+//             Serial.println(spreadsheetURL);
+//         }
 
-        spreadsheetTabCreated = now;
-    }
-}
+//         spreadsheetTabCreated = now;
+//     }
+// }
 
 void createGoogleSheetTab()
 {
@@ -360,7 +369,7 @@ void createGoogleSheetTab()
     }
 
     tm now = getTimeNow();
-    if (!spreadsheetTab.isEmpty() && now.tm_mday == spreadsheetTabCreated.tm_mday)
+    if (spreadsheetTab[0] != '\0' && now.tm_mday == spreadsheetTabCreated.tm_mday)
     {
         return;
     }
@@ -396,8 +405,9 @@ void createGoogleSheetTab()
     if (success)
     {
         Serial.println("Tab created successfully.");
-        spreadsheetTab = tabName;
+        strcpy(spreadsheetTab, tabName);
         spreadsheetTabCreated = now;
+        lastRow = 0;
     }
     else
     {
@@ -408,10 +418,11 @@ void createGoogleSheetTab()
 
         Log.infoln("Create tab error status: %s", status.stringValue.c_str());
 
-        if (status.stringValue == "INVALID_ARGUMENT" && spreadsheetTabCreated.tm_year == 0)
+        if (status.stringValue == "INVALID_ARGUMENT" && spreadsheetTabCreated.tm_mday == 0)
         {
-            spreadsheetTab = tabName;
+            strcpy(spreadsheetTab, tabName);
             spreadsheetTabCreated = now;
+            Log.infoln("Assuming tab already exists. Setting tab name to: %s", spreadsheetTab);
         }
     }
 }
