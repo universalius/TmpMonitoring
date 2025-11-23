@@ -8,7 +8,7 @@
 struct TmpMeasurement
 {
     double temperature;
-    char *time;
+    char time[20];
 };
 
 class GoogleTmpLogger

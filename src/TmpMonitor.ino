@@ -14,13 +14,17 @@
 
 #define SDA 14
 #define SCL 13
-#define LCD_ADDRESS 0x27
+#define LCD_ADDRESS 0x3F
 
 String WIFI_SSID = "";
 String WIFI_PASSWORD = "";
 
 GoogleTmpLogger tmpLogger;
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2);
+
+const int backlightButtonPin = 2;    // Pin connected to the button
+int backlightButtonLastState = HIGH; // Variable to store the last button state
+bool backlightOn = true;
 
 void setup()
 {
@@ -61,7 +65,10 @@ void loop()
     lcd.print(measurement.temperature);
     lcd.print((char)223);
     lcd.print("C   ");
-    delay(1000);
+
+    handleLCDBacklightButtonClick();
+
+    delay(10000);
 
     // esp_deep_sleep_start();
 }
@@ -109,8 +116,8 @@ void setupLCD()
     Wire.begin(SDA, SCL); // attach the IIC pin
     if (!i2CAddrTest(LCD_ADDRESS))
     {
-        Log.infoln("LCD not found at address 0x27, trying 0x3F");
-        lcd = LiquidCrystal_I2C(0x3F, 16, 2);
+        Log.infoln("LCD not found at address 0x3F, trying 0x27");
+        lcd = LiquidCrystal_I2C(0x27, 16, 2);
     }
     lcd.init();              // LCD driver initialization
     lcd.backlight();         // Open the backlight
@@ -205,4 +212,30 @@ bool i2CAddrTest(uint8_t addr)
         return true;
     }
     return false;
+}
+
+void handleLCDBacklightButtonClick()
+{
+    int buttonState = digitalRead(backlightButtonPin); // Read the button state
+
+    // Check if the button is pressed (LOW) and was previously not pressed
+    if (buttonState == LOW && backlightButtonLastState == HIGH)
+    {
+        delay(50);                                  // Debounce delay
+        if (digitalRead(backlightButtonPin) == LOW) // Confirm button press
+        {
+            // Toggle the backlight
+            backlightOn = !backlightOn;
+            if (backlightOn)
+            {
+                lcd.backlight();
+            }
+            else
+            {
+                lcd.noBacklight();
+            }
+        }
+    }
+
+    backlightButtonLastState = buttonState;
 }

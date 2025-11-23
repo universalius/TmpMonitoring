@@ -8,6 +8,8 @@
 
 #define MaxMeasurementsCount 20
 
+#define RouterSwitchOnDelay 5 // seconds
+
 String GOOGLE_PROJECT_ID = "";
 
 // Service Account's client email
@@ -30,7 +32,7 @@ RTC_DATA_ATTR int lastRow = 0;
 
 RTC_DATA_ATTR int measurementIndex = 0;
 
-RTC_DATA_ATTR TmpMeasurement temperatures[100];
+RTC_DATA_ATTR TmpMeasurement temperatures[MaxMeasurementsCount];
 
 tm getTimeNow()
 {
@@ -56,9 +58,13 @@ TmpMeasurement readTemperature()
     double Rt = 10 * voltage / (3.3 - voltage);                     // calculate resistance value of thermistor
     double tempK = 1 / (1 / (273.15 + 25) + log(Rt / 10) / 3950.0); // calculate temperature (Kelvin)
     double tempC = tempK - 273.15;                                  // calculate temperature (Celsius)
-    Serial.printf("Pin value : %d,\tVoltage : %.2fV, \tTemperature : %.2fC,\tTime : %s\n", adcValue, voltage, tempC, timeString);
+    Serial.printf("Pin value : %d,\tVoltage : %.2fV,\tTemperature : %.2fC, \tTime : %s\n", adcValue, voltage, tempC, timeString);
 
-    return {tempC, timeString};
+    TmpMeasurement measurement;
+    measurement.temperature = tempC;
+    strcpy(measurement.time, timeString);
+
+    return measurement;
 }
 
 void addTemperatureToMemory(TmpMeasurement temperature)
@@ -120,8 +126,8 @@ void logTemperature()
             char col2Path[20];
             sprintf(col2Path, "values/[%d]/[1]", i);
 
-            valueRange.set(col1Path, measurement.time);
-            valueRange.set(col2Path, measurement.temperature); // row 1/ column 2
+            valueRange.set(col1Path, measurement.time); // row 1/ column 1
+            valueRange.set(col2Path, measurement.temperature);  // row 1/ column 2
 
             Log.infoln("Measurement %d -> Time: %s, Temp: %.2f", i, measurement.time, measurement.temperature);
         }
@@ -369,12 +375,12 @@ TmpMeasurement GoogleTmpLogger::logTmpTask()
 
     if (measurementIndex >= MaxMeasurementsCount - 1)
     {
-        Log.infoln("Max measurements reached, powering on router to log data %d", measurementIndex);
+        //Log.infoln("Max measurements reached, powering on router to log data %d", measurementIndex);
 
         readAndRememberTemperature();
 
         digitalWrite(routerPowerOnPin, HIGH);
-        delay(1000 * 5);
+        delay(1000 * RouterSwitchOnDelay);
 
         createGoogleSheetTab();
 
