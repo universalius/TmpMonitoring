@@ -6,7 +6,7 @@
 #define thermistorPin 1
 #define routerPowerOnPin 2
 
-#define MaxMeasurementsCount 20
+#define MaxMeasurementsCount 60
 
 #define RouterSwitchOnDelay 5 // seconds
 

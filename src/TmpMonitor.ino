@@ -66,11 +66,11 @@ void loop()
     lcd.print((char)223);
     lcd.print("C   ");
 
-    handleLCDBacklightButtonClick();
+    //handleLCDBacklightButtonClick();
 
-    delay(10000);
+    //delay(10000);
 
-    // esp_deep_sleep_start();
+    esp_deep_sleep_start();
 }
 
 void connectToWiFi()
@@ -120,7 +120,7 @@ void setupLCD()
         lcd = LiquidCrystal_I2C(0x27, 16, 2);
     }
     lcd.init();              // LCD driver initialization
-    lcd.backlight();         // Open the backlight
+    //lcd.backlight();         // Open the backlight
     lcd.setCursor(0, 0);     // Move the cursor to row 0, column 0
     lcd.print("LCD setup!"); // The print content is displayed on the LCD
 }
