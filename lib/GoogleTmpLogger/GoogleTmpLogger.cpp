@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoLog.h>
 #include <ESP_Google_Sheet_Client.h>
+#include <ESP32Time.h>
 
 #define thermistorPin 1
 #define routerPowerOnPin 2
@@ -34,7 +35,9 @@ RTC_DATA_ATTR int measurementIndex = 0;
 
 RTC_DATA_ATTR TmpMeasurement temperatures[MaxMeasurementsCount];
 
-tm getTimeNow()
+ESP32Time tmpLoggerRtc;
+
+tm getNowTime()
 {
     struct tm timeinfo;
 
@@ -46,9 +49,14 @@ tm getTimeNow()
     return timeinfo;
 }
 
+tm getNowTimeFromRtc()
+{
+    return tmpLoggerRtc.getTimeStruct();
+}
+
 TmpMeasurement readTemperature()
 {
-    tm now = getTimeNow();
+    tm now = getNowTimeFromRtc();
 
     char timeString[20];
     strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &now);
@@ -101,11 +109,6 @@ void logTemperature()
 
     if (!spreadsheetId.isEmpty())
     {
-        // tm now = getTimeNow();
-
-        // char timeString[50];
-        // strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &now);
-
         char range[50]; // Ensure the buffer is large enough
         int newLastRow = lastRow + MaxMeasurementsCount;
         sprintf(range, "%s!A%d:B%d", spreadsheetTab, lastRow + 1, newLastRow);
@@ -126,8 +129,8 @@ void logTemperature()
             char col2Path[20];
             sprintf(col2Path, "values/[%d]/[1]", i);
 
-            valueRange.set(col1Path, measurement.time); // row 1/ column 1
-            valueRange.set(col2Path, measurement.temperature);  // row 1/ column 2
+            valueRange.set(col1Path, measurement.time);        // row 1/ column 1
+            valueRange.set(col2Path, measurement.temperature); // row 1/ column 2
 
             Log.infoln("Measurement %d -> Time: %s, Temp: %.2f", i, measurement.time, measurement.temperature);
         }
@@ -188,7 +191,7 @@ void createGoogleSheetTab()
         return;
     }
 
-    tm now = getTimeNow();
+    tm now = getNowTime();
     if (spreadsheetTab[0] != '\0' && now.tm_mday == spreadsheetTabCreated.tm_mday)
     {
         return;
@@ -342,6 +345,11 @@ bool compareCharByChar(const char *str1, const char *str2, bool asIntPrint)
     return *str1 == '\0' && *str2 == '\0';
 }
 
+bool GoogleTmpLogger::measurementsBatchFull()
+{
+    return measurementIndex >= MaxMeasurementsCount - 1;
+}
+
 void GoogleTmpLogger::setup(FirebaseJson json)
 {
     setGoogleSecretsFromConfig(json);
@@ -364,18 +372,18 @@ void GoogleTmpLogger::setup(FirebaseJson json)
 
 TmpMeasurement GoogleTmpLogger::logTmpTask()
 {
-    // Call ready() repeatedly in loop for authentication checking and processing
-    bool ready = GSheet.ready();
-
-    while (!ready)
+    if (measurementsBatchFull())
     {
-        delay(500);
-        ready = GSheet.ready();
-    }
+        // Call ready() repeatedly in loop for authentication checking and processing
+        bool ready = GSheet.ready();
 
-    if (measurementIndex >= MaxMeasurementsCount - 1)
-    {
-        //Log.infoln("Max measurements reached, powering on router to log data %d", measurementIndex);
+        while (!ready)
+        {
+            delay(500);
+            ready = GSheet.ready();
+        }
+
+        // Log.infoln("Max measurements reached, powering on router to log data %d", measurementIndex);
 
         readAndRememberTemperature();
 

@@ -16,6 +16,7 @@ class GoogleTmpLogger
 public:
     TmpMeasurement logTmpTask();
     void setup(FirebaseJson json);
+    bool measurementsBatchFull();
 };
 
 #endif // GoogleTmpLogger_H

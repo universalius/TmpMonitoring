@@ -6,6 +6,7 @@
 #include <iostream>
 #include "GoogleTmpLogger.h"
 #include <LiquidCrystal_I2C.h>
+#include <ESP32Time.h>
 
 #define configFilePath "/config.json"
 
@@ -19,8 +20,11 @@
 String WIFI_SSID = "";
 String WIFI_PASSWORD = "";
 
+RTC_DATA_ATTR tm rtcTime;
+
 GoogleTmpLogger tmpLogger;
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2);
+ESP32Time rtc;
 
 // const int backlightButtonPin = 2;    // Pin connected to the button
 // int backlightButtonLastState = HIGH; // Variable to store the last button state
@@ -40,20 +44,32 @@ void setup()
     handleGPIOWakeUp();
 
     FirebaseJson configJson;
-    if (setSecretsFromConfig(configJson))
+    if (rtcTime.tm_year == 0)
     {
-        connectToWiFi();
+        setupRtcTimeFromNetwork(configJson);
+    }
 
-        setupTime();
-
+    if (tmpLogger.measurementsBatchFull())
+    {
+        setupRtcTimeFromNetwork(configJson);
         tmpLogger.setup(configJson);
     }
-    else
-    {
-        Log.error("Could not load secrets from config");
-        while (1)
-            ;
-    }
+
+    // FirebaseJson configJson;
+    // if (timeinfo.tm_year == 0 && setSecretsFromConfig(configJson))
+    // {
+    //     connectToWiFi();
+
+    //     setupTimeByWiFi();
+
+    //     tmpLogger.setup(configJson);
+    // }
+    // else
+    // {
+    //     Log.error("Could not load secrets from config");
+    //     while (1)
+    //         ;
+    // }
 
     esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
 
@@ -80,26 +96,45 @@ void connectToWiFi()
         Serial.print(".");
         delay(300);
     }
-    Serial.println();
-    Serial.print("Connected with IP: ");
-    Serial.println(WiFi.localIP());
-    Serial.println();
+
+    Log.infoln("Connected to Wi-Fi with IP: %s", WiFi.localIP().toString());
 }
 
-void setupTime()
+void setupRtcTimeFromNetwork(FirebaseJson &configJson)
+{
+    setupWiFi(configJson);
+    rtc.setTimeStruct(rtcTime);
+}
+
+void setupWiFi(FirebaseJson &configJson)
+{
+    if (setSecretsFromConfig(configJson))
+    {
+        connectToWiFi();
+
+        setupNowTimeFromNetwork(rtcTime);
+    }
+    else
+    {
+        Log.error("setupWiFi => Could not load secrets from config");
+        while (1)
+            ;
+    }
+}
+
+tm setupNowTimeFromNetwork(tm &timeinfo)
 {
     char *ntpServer = "pool.ntp.org";
     long gmtOffset_sec = 2 * 3600;
     int daylightOffset_sec = 0;
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
-    struct tm timeinfo;
     for (int i = 0; i < 10; i++)
     {
         if (getLocalTime(&timeinfo))
         {
             Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-            return;
+            return timeinfo;
         }
         Serial.println("Waiting for NTP sync...");
         delay(1000);
