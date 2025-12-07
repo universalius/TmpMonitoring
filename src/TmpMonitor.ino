@@ -22,9 +22,11 @@ String WIFI_PASSWORD = "";
 GoogleTmpLogger tmpLogger;
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2);
 
-const int backlightButtonPin = 2;    // Pin connected to the button
-int backlightButtonLastState = HIGH; // Variable to store the last button state
-bool backlightOn = true;
+// const int backlightButtonPin = 2;    // Pin connected to the button
+// int backlightButtonLastState = HIGH; // Variable to store the last button state
+// bool backlightOn = true;
+
+const int wakeupPin = 4; // GPIO 4 for external wake-up
 
 void setup()
 {
@@ -34,6 +36,8 @@ void setup()
     Log.infoln("Setup started");
 
     setupLCD();
+
+    handleGPIOWakeUp();
 
     FirebaseJson configJson;
     if (setSecretsFromConfig(configJson))
@@ -60,15 +64,7 @@ void loop()
 {
     TmpMeasurement measurement = tmpLogger.logTmpTask();
 
-    lcd.setCursor(0, 0); // Move the cursor to row 1, column 0
-    lcd.print("Tmp: ");
-    lcd.print(measurement.temperature);
-    lcd.print((char)223);
-    lcd.print("C   ");
-
-    //handleLCDBacklightButtonClick();
-
-    //delay(10000);
+    printTmpToLCD(measurement);
 
     esp_deep_sleep_start();
 }
@@ -120,7 +116,6 @@ void setupLCD()
         lcd = LiquidCrystal_I2C(0x27, 16, 2);
     }
     lcd.init();              // LCD driver initialization
-    //lcd.backlight();         // Open the backlight
     lcd.setCursor(0, 0);     // Move the cursor to row 0, column 0
     lcd.print("LCD setup!"); // The print content is displayed on the LCD
 }
@@ -137,7 +132,7 @@ void readConfig(FirebaseJson &json)
     WIFI_SSID = getJsonValue(json, "wifi_ssid");
     WIFI_PASSWORD = getJsonValue(json, "wifi_password");
 
-    Log.infoln("Config -> WiFi SSID: %s, WIFI_PASSWORD: %s", WIFI_SSID.c_str(), WIFI_PASSWORD.c_str());
+    // Log.infoln("Config -> WiFi SSID: %s, WIFI_PASSWORD: %s", WIFI_SSID.c_str(), WIFI_PASSWORD.c_str());
 }
 
 bool setSecretsFromConfig(FirebaseJson &configJson)
@@ -160,11 +155,6 @@ bool setSecretsFromConfig(FirebaseJson &configJson)
     }
 
     Serial.println("setup -> SPIFFS mounted successfully");
-    // if (readConfig().serializedBufferLength() == 0)
-    // {
-    //     Serial.println("setup -> Could not read Config file");
-    //     return false;
-    // }
 
     readConfig(configJson);
 
@@ -214,28 +204,53 @@ bool i2CAddrTest(uint8_t addr)
     return false;
 }
 
-void handleLCDBacklightButtonClick()
-{
-    int buttonState = digitalRead(backlightButtonPin); // Read the button state
+// void handleLCDBacklightButtonClick()
+// {
+//     int buttonState = digitalRead(backlightButtonPin); // Read the button state
 
-    // Check if the button is pressed (LOW) and was previously not pressed
-    if (buttonState == LOW && backlightButtonLastState == HIGH)
+//     // Check if the button is pressed (LOW) and was previously not pressed
+//     if (buttonState == LOW && backlightButtonLastState == HIGH)
+//     {
+//         delay(50);                                  // Debounce delay
+//         if (digitalRead(backlightButtonPin) == LOW) // Confirm button press
+//         {
+//             // Toggle the backlight
+//             backlightOn = !backlightOn;
+//             if (backlightOn)
+//             {
+//                 lcd.backlight();
+//             }
+//             else
+//             {
+//                 lcd.noBacklight();
+//             }
+//         }
+//     }
+
+//     backlightButtonLastState = buttonState;
+// }
+
+void handleGPIOWakeUp() // Function for determining the GPIO that caused the wake-up
+{
+    esp_sleep_wakeup_cause_t wakeupReason = esp_sleep_get_wakeup_cause();
+    if (wakeupReason == ESP_SLEEP_WAKEUP_EXT0)
     {
-        delay(50);                                  // Debounce delay
-        if (digitalRead(backlightButtonPin) == LOW) // Confirm button press
-        {
-            // Toggle the backlight
-            backlightOn = !backlightOn;
-            if (backlightOn)
-            {
-                lcd.backlight();
-            }
-            else
-            {
-                lcd.noBacklight();
-            }
-        }
+        Log.infoln("Wake up caused by external signal using RTC_IO");
+        lcd.backlight();
+    }
+    else
+    {
+        Log.infoln("Wake up caused by timer");
     }
 
-    backlightButtonLastState = buttonState;
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)wakeupPin, LOW); // Configure external wake-up
+}
+
+void printTmpToLCD(TmpMeasurement measurement)
+{
+    lcd.setCursor(0, 0); // Move the cursor to row 1, column 0
+    lcd.print("Tmp: ");
+    lcd.print(measurement.temperature);
+    lcd.print((char)223);
+    lcd.print("C   ");
 }
